@@ -1,100 +1,78 @@
 #!/bin/bash
 
-#Author : zahi0 @ github
-#Date : 20220113
-#Description : 内核编译脚本，这个脚本可以在github action和自己的pc都可以使用
+set -e
 
-clang_path="${PWD}/proton-clang/bin"
-gcc_path="${clang_path}/aarch64-linux-gnu-"
-gcc_32_path="${clang_path}/arm-linux-gnueabi-"
-date="`date +"%Y%m%d%H%M"`"
-args="-j$(nproc --all) O=out ARCH=arm64 SUBARCH=arm64 "
+# Working Directory
+WORKING_DIR="$(pwd)"
 
-print (){
-case ${2} in
-	"red")
-	echo -e "\033[31m $1 \033[0m";;
-
-	"blue")
-	echo -e "\033[34m $1 \033[0m";;
-
-	"yellow")
-	echo -e "\033[33m $1 \033[0m";;
-
-	"purple")
-	echo -e "\033[35m $1 \033[0m";;
-
-	"sky")
-	echo -e "\033[36m $1 \033[0m";;
-
-	"green")
-	echo -e "\033[32m $1 \033[0m";;
-
-	*)
-	echo $1
-	;;
-	esac
+# Functions For Telegram Post
+msg() {
+	curl -X POST https://api.telegram.org/bot$BOT_TOKEN/sendMessage?chat_id=$TG_CHAT_ID \
+	-d "disable_web_page_preview=true" \
+	-d "parse_mode=html" \
+	-d text="$1"
 }
 
-clean(){
-	rm -rf out
-	mkdir out
-	make mrproper
-	make $args mrproper
+file() {
+	MD5=$(md5sum "$1" | cut -d' ' -f1)
+	curl -F document=@"$1" https://api.telegram.org/bot$BOT_TOKEN/sendDocument?chat_id=$TG_CHAT_ID \
+        -F "disable_web_page_preview=true" \
+        -F "parse_mode=Markdown" \
+	-F caption="$2 | *MD5 Checksum : *\`$MD5\`"
 }
 
+# Cloning Anykernel
+git clone --depth=1  -b main $WORKING_DIR/Anykernel
 
+# Cloning Kernel
+git clone --depth=1 $REPO_LINK -b $BRANCH_NAME $WORKING_DIR/kernel
 
-build_kernel(){
-	export KBUILD_BUILD_USER="zahi0"  
-	export KBUILD_BUILD_HOST="zahi0-server"  
-	make $args sweet_defconfig #修改配置文件
-	if [ $? -ne 0 ]; then
-      		exit 0
-        fi
-        echo
-        echo
-	make $args
-	if [ $? -ne 0 ]; then
-		echo
-		echo "====================================="
-		print "************编译失败!***************" red
-		echo "====================================="
-		
-	else 
-		echo
-		echo "====================================="
-		print "************编译成功!***************" green
-		echo "====================================="
-	
-        fi
-        echo
-	echo     
-}
+# Cloning Toolchain
+git clone --depth=1  -b master $WORKING_DIR/toolchain
 
+# Change Directory to the Source Directry
+cd $WORKING_DIR/kernel
 
-echo
-echo "====================================="
-print "****开始编译内核***** version:$date" yellow
-echo "====================================="
+# Build Info Variables
+DEVICE="vince"
+DISTRO=$(source /etc/os-release && echo $NAME)
+COMPILER=$($WORKING_DIR/toolchain/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/version//g' -e 's/  */ /g' -e 's/[[:space:]]*$//')
+ZIP_NAME=Garuda-Kernel-1.0-Beta-Release-$(TZ=Asia/Kolkata date +%Y%m%d-%H%M).zip
 
+#Starting Compilation
+BUILD_START=$(date +"%s")
+msg "<b>$BUILD_ID CI Build Triggered</b>%0A<b>Docker OS: </b><code>$DISTRO</code>%0A<b>Date : </b><code>$(TZ=Asia/Kolkata date)</code>%0A<b>Device : </b><code>$DEVICE</code>%0A<b>Compiler : </b><code>$COMPILER</code>%0A<b>Branch: </b><code>$BRANCH_NAME</code>"
+export KBUILD_BUILD_USER="Bhav06"
+export KBUILD_BUILD_HOST="GitHub"
+export ARCH=arm64
+export PATH="$WORKING_DIR/toolchain/bin/:$PATH"
+make O=out sweet_defconfig
+make -j$(nproc --all) O=out \
+      CC=clang \
+      AR=llvm-ar \
+      NM=llvm-nm \
+      OBJCOPY=llvm-objcopy \
+      OBJDUMP=llvm-objdump \
+      STRIP=llvm-strip \
+      LD=ld.lld \
+      HOSTCC=clang \
+      HOSTLD=ld.lld \
+      HOSTAR=llvm-ar \
+      HOSTCXX=clang++ \
+      CLANG_TRIPLE=aarch64-linux-gnu- \
+      CROSS_COMPILE=aarch64-linux-gnu- \
+      CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+      2>&1 | tee out/error.txt
+BUILD_END=$(date +"%s")
+DIFF=$((BUILD_END - BUILD_START))
 
-args+="CC=${clang_path}/clang \
-CLANG_TRIPLE=aarch64-linux-gnu- \
-LLVM_AR=${clang_path}/llvm-ar \
-LLVM_NM=${clang_path}/llvm-nm \
-OBJCOPY=${clang_path}/llvm-objcopy \
-OBJDUMP=${clang_path}/llvm-objdump \
-STRIP=${clang_path}/llvm-strip \
-CROSS_COMPILE=$gcc_path \
-LD=${clang_path}/ld.lld \
-CROSS_COMPILE_ARM32=$gcc_32_path \
-LOCALVERSION=-$date  "
-
-
-
-cd kernel_src
-clean
-build_kernel
-cp ./out/arch/arm64/boot/Image.gz-dtb Image.gz-dtb
-cd ..
+#Zipping & Uploading Flashable Kernel Zip
+if [ -e out/arch/arm64/boot/Image.gz-dtb ] && [ -e out/arch/arm64/boot/dtbo.img ]; then
+cp out/arch/arm64/boot/Image.gz-dtb $WORKING_DIR/Anykernel
+cp out/arch/arm64/boot/dtbo.img $WORKING_DIR/Anykernel
+cd $WORKING_DIR/Anykernel
+zip -r9 $ZIP_NAME * -x .git README.md *placeholder
+file "$ZIP_NAME" "*Build Completed :* $((DIFF / 60)) minute(s) and $((DIFF % 60)) second(s)"
+else
+file "$WORKING_DIR/kernel/out/error.txt" "*Build Failed :* $((DIFF / 60)) minute(s) and $((DIFF % 60)) second(s)"
+fi
