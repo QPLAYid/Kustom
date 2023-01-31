@@ -45,9 +45,9 @@ export CHATID API_BOT TYPE_KERNEL
 
 # Kernel build config
 TYPE="MIUI"
-DEVICE="Redmi note 10 pro"
+DEVICE="Xioami Poco X3 Pro"
 KERNEL_NAME="AGHISNA"
-DEFCONFIG="sweet_user_defconfig"
+DEFCONFIG="vayu-vts_defconfig"
 AnyKernel="https://github.com/RooGhz720/Anykernel3"
 AnyKernelbranch="master"
 HOSST="MyLabs"
