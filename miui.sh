@@ -47,13 +47,10 @@ export CHATID API_BOT TYPE_KERNEL
 TYPE="MIUI"
 DEVICE="Xioami Poco X3 Pro"
 KERNEL_NAME="AGHISNA"
-DEFCONFIG="vayu-vts_defconfig"
+DEFCONFIG="vayu_defconfig"
 AnyKernel="https://github.com/RooGhz720/Anykernel3"
 AnyKernelbranch="master"
-HOSST="MyLabs"
-USEER="RooGhz720"
-ID="AmiciaDeRune"
-MESIN="Git Workflows"
+
 
 
 # setup telegram env
