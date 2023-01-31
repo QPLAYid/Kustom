@@ -27,7 +27,7 @@ jobs:
        - name: Building
          run: |
             cd kernel
-            bash mass.sh
+            bash build.sh
             
        - uses: actions/upload-artifact@v2
          with:
